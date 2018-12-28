@@ -7,6 +7,9 @@ import urllib.request
 import codecs
 import time
 from Py4Js import Py4Js
+import win_unicode_console
+
+win_unicode_console.enable()
 
 
 def pdf2txt(fileName):
@@ -17,7 +20,7 @@ def pdf2txt(fileName):
     os.system('py -2 pdf2txt.pyw -o "%s.txt" "%s.pdf"' % (fileName, fileName))
 
 
-def txt2sentences(txtPath):
+def txt2sentences(fileName):
     print('Converting text to sentences...')
 
     special = ['ff', 'fi', 'fl', 'ffi', 'ffl', 'ft']
@@ -29,7 +32,7 @@ def txt2sentences(txtPath):
     cid['(cid:138)'] = 'tt'
     cid['(cid:140)'] = 'Th'
 
-    f = codecs.open(txtPath, 'r', encoding='utf-8')
+    f = codecs.open(fileName + '.txt', 'r', encoding='utf-8')
     s = f.read()
     f.close()
 
@@ -185,7 +188,7 @@ def txt2sentences(txtPath):
                     sentence = sentence + ' '
                     space = True
 
-    f = open(txtPath, 'w')
+    f = open(fileName + '_sentences.txt', 'w')
     f.write('\n'.join(sentences))
     f.close()
 
@@ -197,12 +200,14 @@ def translate(fileName):
 
     def open_url(url):
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20100101 Firefox/23.0'}
-        req = urllib.request.Request(url=url, headers=headers)
-        response = urllib.request.urlopen(req)
+        request = urllib.request.Request(url=url, headers=headers)
+        response = urllib.request.urlopen(request)
         data = response.read().decode('utf-8')
         return data
 
     def translatePart(content):
+        RETRY_PUNISHMENT = 2
+
         if len(content) > 4891:
             print('Length exceeded!')
             return
@@ -212,22 +217,17 @@ def translate(fileName):
               '&dt=rw&dt=rm&dt=ss&dt=t&ie=UTF-8&oe=UTF-8&clearbtn=1&otf=1&pc=1' \
               '&srcrom=0&ssel=0&tsel=0&kc=2&tk=%s&q=%s' % (js.getTk(content), urllib.parse.quote(content))
 
-        restartCount = 0
+        retryCount = 0
         while True:
-            tryCount = 0
-
-            while tryCount < 5:
-                try:
-                    response = open_url(url)
-                    break
-                except:
-                    tryCount += 1
-
-            if tryCount == 5:
-                restartCount += 1
+            try:
+                response = open_url(url)
+                break
+            except Exception as e:
+                retryCount += 1
                 print('Internet connection seems to have some problems, retry after %i seconds...' %
-                      (restartCount * 10))
-                time.sleep(restartCount * 10)
+                      (retryCount * RETRY_PUNISHMENT))
+                print('(%s)' % str(e))
+                time.sleep(retryCount * RETRY_PUNISHMENT)
 
         response = response.replace('[null,', '[None,')
         response = response.replace(',null', ',None')
@@ -248,8 +248,8 @@ def translate(fileName):
         # if end>4:
         # return result[4:end]
 
-    f = codecs.open(fileName + '.txt', 'r', 'utf-8')
-    s = f.readlines()
+    f = codecs.open(fileName + '_sentences.txt', 'r', 'utf-8')
+    s = f.read().split('\r\n')
     f.close()
     f = codecs.open(fileName + '_translated.txt', 'w', 'utf-8')
     f.close()
@@ -258,10 +258,10 @@ def translate(fileName):
 
     js = Py4Js()
     for i in range(len(s)):
-        print('\r%i/%i' % (i + 1, len(s)), end='')
-        translatePart(s[i])
+        print('%i/%i' % (i + 1, len(s)))
+        translatePart(s[i] + '\n')
 
-    print('Translating finished!')
+    print('Translation finished!')
 
 
 parser = argparse.ArgumentParser()
@@ -269,9 +269,9 @@ parser.add_argument('--file', type=str, required=True)
 parsedArgs = parser.parse_args()
 
 fileName = parsedArgs.file
-if fileName[-4:] == '.pdf':
+if fileName[-4:] in {'.pdf', '.txt'}:
     fileName = fileName[:-4]
 
 pdf2txt(fileName)
-txt2sentences(fileName + '.txt')
+txt2sentences(fileName)
 translate(fileName)
